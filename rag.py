@@ -22,6 +22,7 @@ from typing import List, Dict
 import json
 import os
 import warnings
+import logging
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
@@ -31,8 +32,43 @@ warnings.filterwarnings("ignore")
 # Load environment variables
 dotenv.load_dotenv()
 
-# Initialize FastAPI app
-app = FastAPI()
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Product RAG API",
+              description="Retrieval Augmented Generation API for Product Information",
+              version="1.0.0")
+
+
+@app.get("/")
+async def root():
+    """Root endpoint for health checks"""
+    return {"status": "ok", "message": "Product Information Retrieval System is running"}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Check Redis connection
+        redis_client.ping()
+        return {
+            "status": "healthy",
+            "services": {
+                "redis": "connected",
+                "api": "running"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service unhealthy: {str(e)}"
+        )
 
 # Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
