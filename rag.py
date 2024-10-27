@@ -127,6 +127,34 @@ chain_with_history = RunnableWithMessageHistory(
     history_messages_key="history"
 )
 
+
+@app.get("/")
+async def root():
+    """Root endpoint for health checks"""
+    return {"status": "ok", "message": "Product Information Retrieval System is running"}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Check Redis connection
+        redis_client.ping()
+        return {
+            "status": "healthy",
+            "services": {
+                "redis": "connected",
+                "api": "running"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service unhealthy: {str(e)}"
+        )
+
+
 # Initialize Redis vector store
 
 
