@@ -185,6 +185,7 @@ class AnswerResponse(BaseModel):
     answer: str
 
 
+@app.get("/api/chat", response_model=AnswerResponse)
 @app.post("/api/chat", response_model=AnswerResponse)
 async def chat_endpoint(question: str = Query(...)):
     """Handle chat endpoint"""
