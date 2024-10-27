@@ -44,6 +44,55 @@ app = FastAPI(title="Product RAG API",
               version="1.0.0")
 
 
+# Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+redis_host = os.getenv("REDIS_HOST")
+redis_password = os.getenv("REDIS_PASS")
+redis_url = f"redis://:{redis_password}@{redis_host}:14266"
+
+# # Initialize Redis client
+# redis_client = redis.Redis(
+#     host=redis_host,
+#     port=14266,
+#     password=redis_password,
+# )
+
+# Dependency to ensure Redis is initialized
+
+redis_client = None
+redis_instance = None
+
+
+async def get_redis_client():
+    if redis_client is None:
+        raise HTTPException(
+            status_code=503, detail="Redis client not initialized")
+    return redis_client
+
+
+@app.on_event("startup")
+async def startup_event():
+    global redis_client, redis_instance
+    try:
+        # Initialize Redis client
+        redis_client = redis.Redis(
+            host=os.getenv("REDIS_HOST"),
+            port=14266,
+            password=os.getenv("REDIS_PASS"),
+            decode_responses=True
+        )
+        # Test Redis connection
+        redis_client.ping()
+
+        # Initialize redis_instance (your vector store)
+        redis_instance = init_redis_store()
+
+        logger.info("Startup completed successfully")
+    except Exception as e:
+        logger.error(f"Startup failed: {str(e)}")
+        raise
+
+
 @app.get("/")
 async def root():
     """Root endpoint for health checks"""
@@ -70,18 +119,6 @@ async def health_check():
             detail=f"Service unhealthy: {str(e)}"
         )
 
-# Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-redis_host = os.getenv("REDIS_HOST")
-redis_password = os.getenv("REDIS_PASS")
-redis_url = f"redis://:{redis_password}@{redis_host}:14266"
-
-# Initialize Redis client
-redis_client = redis.Redis(
-    host=redis_host,
-    port=14266,
-    password=redis_password,
-)
 
 # Initialize OpenAI components
 embed_model = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
@@ -128,33 +165,6 @@ chain_with_history = RunnableWithMessageHistory(
 )
 
 
-@app.get("/")
-async def root():
-    """Root endpoint for health checks"""
-    return {"status": "ok", "message": "Product Information Retrieval System is running"}
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    try:
-        # Check Redis connection
-        redis_client.ping()
-        return {
-            "status": "healthy",
-            "services": {
-                "redis": "connected",
-                "api": "running"
-            }
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Service unhealthy: {str(e)}"
-        )
-
-
 # Initialize Redis vector store
 
 
@@ -192,16 +202,6 @@ def init_redis_store():
             redis_url=redis_url,
             metadata=[{"id": i} for i in range(len(summaries))],
         )
-
-
-# Initialize redis_instance at startup
-# redis_instance = None
-
-@app.on_event("startup")
-async def startup_event():
-    # global redis_instance
-    global redis_instance
-    redis_instance = init_redis_store()
 
 
 def get_data() -> List[Dict]:
