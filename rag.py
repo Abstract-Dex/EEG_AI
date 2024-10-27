@@ -49,6 +49,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 redis_host = os.getenv("REDIS_HOST")
 redis_password = os.getenv("REDIS_PASS")
 redis_url = f"redis://:{redis_password}@{redis_host}:14266"
+MAX_HISTORY_LENGTH = 5  # Number of recent conversation pairs to maintain
 
 # # Initialize Redis client
 # redis_client = redis.Redis(
@@ -58,6 +59,29 @@ redis_url = f"redis://:{redis_password}@{redis_host}:14266"
 # )
 
 # Dependency to ensure Redis is initialized
+
+
+class LimitedRedisChatMessageHistory(RedisChatMessageHistory):
+    """Custom chat history class that maintains only recent messages"""
+
+    def __init__(self, session_id: str, redis_client: redis.Redis, max_history: int = MAX_HISTORY_LENGTH):
+        super().__init__(session_id=session_id, redis_client=redis_client)
+        self.max_history = max_history
+
+    def add_message(self, message):
+        """Add a message and trim history if needed"""
+        super().add_message(message)
+        messages = self.messages
+
+        # If we have more than max_history pairs of messages, trim the oldest ones
+        if len(messages) > (self.max_history * 2):
+            # Keep only the most recent max_history pairs
+            messages = messages[-(self.max_history * 2):]
+            # Clear and update Redis with trimmed history
+            self.clear()
+            for msg in messages:
+                super().add_message(msg)
+
 
 redis_client = None
 redis_instance = None
@@ -156,9 +180,10 @@ prompt = ChatPromptTemplate.from_messages([
 chain = prompt | llm
 chain_with_history = RunnableWithMessageHistory(
     chain,
-    lambda session_id: RedisChatMessageHistory(
+    lambda session_id: LimitedRedisChatMessageHistory(
         session_id=session_id,
         redis_client=redis_client,
+        max_history=MAX_HISTORY_LENGTH
     ),
     input_messages_key="question",
     history_messages_key="history"
@@ -166,7 +191,6 @@ chain_with_history = RunnableWithMessageHistory(
 
 
 # Initialize Redis vector store
-
 
 def init_redis_store():
     try:
@@ -253,7 +277,7 @@ class AnswerResponse(BaseModel):
 @app.post("/api/chat", response_model=AnswerResponse)
 async def chat_endpoint(question: str = Query(...)):
     """Handle chat endpoint"""
-    session_id = "rag_session"
+    session_id = "rag_session_2"
     try:
         context = retrieve_docs(question)
         answer = chain_with_history.invoke(
